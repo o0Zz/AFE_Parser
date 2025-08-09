@@ -3,18 +3,121 @@
 #include "inttypes.h"
 #include <cstdio>
 #include <fstream>
+#include <cstring>
+#include <filesystem>
+
+#define ADDR2LINE_DEFAULT_PATH "/opt/devkitpro/devkitA64/bin/aarch64-none-elf-addr2line.exe"
+
+class Addr2LineResolver : public IStackTraceResolver
+{
+private:
+	const char* addr2linePath;
+	const char* elfPath;
+public:
+	Addr2LineResolver(const char* addr2linePath, const char* elfPath)
+		: addr2linePath(addr2linePath), elfPath(elfPath) {}
+
+	static uint64_t GetRelativeAddress(uint64_t module_base, uint64_t offset)
+	{
+		if (offset >= module_base && offset - module_base < 0x1'000'000)
+			return offset - module_base;
+		return offset;
+	}
+
+	void ResolveAddress(uint64_t module_base, uint64_t offset, char* output, size_t outputSize) const override
+	{
+		char addr2lineOutput[256];
+		char command[256];
+		snprintf(command, sizeof(command), "\"%s\" -e \"%s\" -f -p -C 0x%" PRIx64, addr2linePath, elfPath, GetRelativeAddress(module_base, offset));
+
+#if defined(_WIN32)
+        FILE* pipe = _popen(command, "r");
+#else
+        FILE* pipe = popen(command, "r");
+#endif
+		if (pipe) {
+			
+			fgets(addr2lineOutput, sizeof(addr2lineOutput), pipe);
+
+	#if defined(_WIN32)
+			_pclose(pipe);
+	#else
+			pclose(pipe);
+	#endif
+		}
+		else {
+			snprintf(addr2lineOutput, sizeof(addr2lineOutput), "Failed to run addr2line");
+		}
+
+		// Remove newline character if present
+		size_t len = strlen(addr2lineOutput);
+		if (len > 0 && addr2lineOutput[len - 1] == '\n') {
+			addr2lineOutput[len - 1] = '\0';
+		}
+
+		snprintf(output, outputSize, "0x%" PRIx64 " (MOD_BASE + 0x%08" PRIx64 ") - %s", offset, offset - module_base, addr2lineOutput);
+	}
+};
+
+class NoneResolver : public IStackTraceResolver
+{
+public:
+	void ResolveAddress(uint64_t module_base, uint64_t offset, char* output, size_t outputSize) const override
+	{
+		snprintf(output, outputSize, "0x%" PRIx64 " (MOD_BASE + 0x%" PRIx64 ")", offset, offset - module_base);
+	}
+};
 
 int main(int argc, char* argv[])
 {
-	const char* filePath = argv[1];
-	if (argc < 2)
-	{
-		printf("Please put the path to the fatal report .bin file as the first parameter to this program\n");
-		return -1;
-	}
+	const char *reportPath = NULL;
+    const char *elfPath = NULL;
+	const char *addr2linePath = NULL;
+	std::unique_ptr<IStackTraceResolver> resolver;
+
+    // Parse arguments
+    for (int i = 1; i < argc; i++)
+    {
+        if (strcmp(argv[i], "-report") == 0 && i + 1 < argc)
+        {
+            reportPath = argv[++i];
+        }
+        else if (strcmp(argv[i], "-elf") == 0 && i + 1 < argc)
+        {
+            elfPath = argv[++i];
+        }
+		else if (strcmp(argv[i], "-addr2line") == 0 && i + 1 < argc)
+        {
+            addr2linePath = argv[++i];
+        }
+		else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0)
+		{
+			printf("Usage: %s -report <report.bin> -elf <report.elf> [-addr2line addr2line_path]\n", argv[0]);
+			return 0;
+		}
+    }
+
+    // Validate
+    if (!reportPath || !elfPath)
+    {
+        printf("Usage: %s -report <report.bin> -elf <report.elf>\n", argv[0]);
+        return -1;
+    }
+
+	if (!addr2linePath && std::filesystem::exists(ADDR2LINE_DEFAULT_PATH))
+		addr2linePath = ADDR2LINE_DEFAULT_PATH; // Default addr2line command
+
+	resolver = std::make_unique<NoneResolver>();
+	if (addr2linePath)
+		resolver = std::make_unique<Addr2LineResolver>(addr2linePath, elfPath);
+
+    printf("Report file    : %s\n", reportPath);
+    printf("ELF file       : %s\n", elfPath);
+	printf("Resolver type  : %s (%s)\n", resolver ? "Addr2LineResolver" : "NoneResolver", addr2linePath ? addr2linePath : "");
+	printf("---------------------------------------------------------------\n");
 
 	std::fstream file;
-	file.open(filePath, std::fstream::in | std::fstream::binary);
+	file.open(reportPath, std::fstream::in | std::fstream::binary);
 
 	//Get file magic
 	uint32_t fatal_magic;
@@ -26,14 +129,14 @@ int main(int argc, char* argv[])
 	{
 		atmosphere_fatal_error_ctx fatal_report;
 		file.read((char*)&fatal_report, sizeof(fatal_report));
-		PrintAFE2Report(&fatal_report);
+		PrintAFE2Report(&fatal_report, *resolver);
 	}
 	//AFE1
 	else if (fatal_magic == ATMOSPHERE_REBOOT_TO_FATAL_MAGIC_1)
 	{
 		atmosphere_fatal_error_ctx_1 fatal_report;
 		file.read((char*)&fatal_report, sizeof(fatal_report));
-		PrintAFE1Report(&fatal_report);
+		PrintAFE1Report(&fatal_report, *resolver);
 	}
 	//AFE0
 	else if (fatal_magic == ATMOSPHERE_REBOOT_TO_FATAL_MAGIC_0)

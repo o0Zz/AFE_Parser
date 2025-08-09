@@ -1,5 +1,6 @@
 #include "AFE.h"
 #include "inttypes.h"
+#include <cstdlib>
 
 static const char* GetAddressWithModBase(uint64_t module_base, uint64_t offset)
 {
@@ -11,11 +12,12 @@ static const char* GetAddressWithModBase(uint64_t module_base, uint64_t offset)
 	return string_buffer;
 }
 
-static void PrintReportDesc(uint32_t magic, uint32_t error_desc, uint64_t titleid)
+static void PrintReportDesc(uint32_t magic, uint32_t error_desc, uint64_t titleid, uint64_t module_base = -1)
 {
-	printf("Magic: %.4s (0x%" PRIX32 ")\n", (char*)&magic, magic);
+	printf("Magic            : %.4s (0x%" PRIX32 ")\n", (char*)&magic, magic);
 	printf("Error description: 0x%" PRIX32 "\n", error_desc);
-	printf("Title ID: %" PRIX64 "\n", titleid);
+	printf("Title ID         : %" PRIX64 "\n", titleid);
+	printf("Module base addr : %" PRIX64 "\n", module_base);
 }
 
 static void PrintRegisters(uint64_t *gprs, uint64_t pc, uint64_t module_base = -1)
@@ -34,21 +36,22 @@ static void PrintRegisters(uint64_t *gprs, uint64_t pc, uint64_t module_base = -
 
 static void PrintMisc(uint32_t pstate, uint32_t afsr0, uint32_t afsr1, uint32_t esr, uint64_t far, uint64_t report_identifier)
 {
-	printf("pstate: 0x%" PRIx32 "\n", pstate);
-	printf("afsr0: 0x%" PRIx32 "\n", afsr0);
-	printf("afsr1: 0x%" PRIx32 "\n", afsr1);
-	printf("esr: 0x%" PRIx32 "\n", esr);
-	printf("far: 0x%" PRIx64 "\n", far);
-	printf("Report identifier: 0x%" PRIx64 "\n", report_identifier);
+	printf("PSTATE           : 0x%" PRIx32 " (Processor State Register)\n", pstate);
+	printf("AFSR0            : 0x%" PRIx32 " (Auxiliary Fault Status Registers)\n", afsr0);
+	printf("AFSR1            : 0x%" PRIx32 " (Auxiliary Fault Status Registers)\n", afsr1);
+	printf("ESR              : 0x%" PRIx32 " (Category and details of the fault)\n", esr);
+	printf("FAR              : 0x%" PRIx64 " (Fault Address Register, the virtual address involved in the fault)\n", far);
+	printf("Report Identifier: 0x%" PRIx64 " (Name of the report)\n", report_identifier);
 }
 
-static void PrintStackTrace(uint64_t* stack_trace, uint64_t stack_trace_size, uint64_t module_base = -1)
+static void PrintStackTrace(uint64_t* stack_trace, uint64_t stack_trace_size, uint64_t module_base, const IStackTraceResolver& resolver)
 {
 	printf("Stack trace:\n");
 	for (uint64_t i = 0; i != stack_trace_size; ++i)
 	{
-		//For whatever reason doing this in a single line doesn't work properly
-		printf("	ReturnAddress[%02" PRIu64 "]: %s\n", i, GetAddressWithModBase(module_base, stack_trace[i]));
+		char result[256];
+		resolver.ResolveAddress(module_base, stack_trace[i], result, sizeof(result));
+		printf("	%02" PRIu64 " - %s\n", i, result);
 	}
 }
 
@@ -85,6 +88,8 @@ static void PrintTlsDump(uint8_t* tls_dump, uint64_t tls_dump_size = AMS_FATAL_E
 void PrintAFE0Report(atmosphere_fatal_error_ctx_0* fatal_report)
 {
 	printf("Fatal report (AFE0):\n");
+	printf("\n");
+
 	PrintReportDesc(fatal_report->magic, fatal_report->error_desc, fatal_report->title_id);
 	printf("\n");
 
@@ -95,10 +100,12 @@ void PrintAFE0Report(atmosphere_fatal_error_ctx_0* fatal_report)
 	printf("\n");
 }
 
-void PrintAFE1Report(atmosphere_fatal_error_ctx_1* fatal_report)
+void PrintAFE1Report(atmosphere_fatal_error_ctx_1* fatal_report, const IStackTraceResolver& resolver)
 {
 	printf("Fatal report (AFE1):\n");
-	PrintReportDesc(fatal_report->magic, fatal_report->error_desc, fatal_report->title_id);
+	printf("\n");
+	
+	PrintReportDesc(fatal_report->magic, fatal_report->error_desc, fatal_report->title_id, fatal_report->module_base);
 	printf("\n");
 
 	PrintRegisters(fatal_report->gprs, fatal_report->pc, fatal_report->module_base);
@@ -107,17 +114,19 @@ void PrintAFE1Report(atmosphere_fatal_error_ctx_1* fatal_report)
 	PrintMisc(fatal_report->pstate, fatal_report->afsr0, fatal_report->afsr1, fatal_report->esr, fatal_report->far, fatal_report->report_identifier);
 	printf("\n");
 
-	PrintStackTrace(fatal_report->stack_trace, fatal_report->stack_trace_size, fatal_report->module_base);
+	PrintStackTrace(fatal_report->stack_trace, fatal_report->stack_trace_size, fatal_report->module_base, resolver);
 	printf("\n");
 
 	PrintStackDump(fatal_report->stack_dump, fatal_report->stack_dump_size);
 	printf("\n");
 }
 
-void PrintAFE2Report(atmosphere_fatal_error_ctx* fatal_report)
+void PrintAFE2Report(atmosphere_fatal_error_ctx* fatal_report, const IStackTraceResolver& resolver)
 {
 	printf("Fatal report (AFE2):\n");
-	PrintReportDesc(fatal_report->magic, fatal_report->error_desc, fatal_report->title_id);
+	printf("\n");
+	
+	PrintReportDesc(fatal_report->magic, fatal_report->error_desc, fatal_report->title_id, fatal_report->module_base);
 	printf("\n");
 
 	PrintRegisters(fatal_report->gprs, fatal_report->pc, fatal_report->module_base);
@@ -126,7 +135,7 @@ void PrintAFE2Report(atmosphere_fatal_error_ctx* fatal_report)
 	PrintMisc(fatal_report->pstate, fatal_report->afsr0, fatal_report->afsr1, fatal_report->esr, fatal_report->far, fatal_report->report_identifier);
 	printf("\n");
 
-	PrintStackTrace(fatal_report->stack_trace, fatal_report->stack_trace_size, fatal_report->module_base);
+	PrintStackTrace(fatal_report->stack_trace, fatal_report->stack_trace_size, fatal_report->module_base, resolver);
 	printf("\n");
 
 	PrintStackDump(fatal_report->stack_dump, fatal_report->stack_dump_size);
