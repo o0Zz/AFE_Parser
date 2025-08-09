@@ -19,7 +19,7 @@ RELEASE_FLAGS     =    $(FLAGS) -O2 -ffunction-sections -fdata-sections -flto
 RELEASE_CFLAGS    =    $(CFLAGS)
 RELEASE_CXXFLAGS  =    $(CXXFLAGS)
 RELEASE_ASFLAGS   =    $(ASFLAGS)
-RELEASE_LDFLAGS   =    $(LDFLAGS) -Wl,--gc-sections -flto -fuse-linker-plugin -s
+RELEASE_LDFLAGS   =    $(LDFLAGS) -Wl,--gc-sections -flto -fuse-linker-plugin -s -static -static-libgcc -static-libstdc++
 
 DEBUG_DEFINES     =    $(DEFINES) DEBUG=1
 DEBUG_FLAGS       =    $(FLAGS) -O0 -g3 -ggdb
