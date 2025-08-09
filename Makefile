@@ -11,7 +11,7 @@ FLAGS             =    -Wall -Wextra -pipe
 CFLAGS            =    -std=gnu11
 CXXFLAGS          =    -std=gnu++17
 ASFLAGS           =
-LDFLAGS           =    -static
+LDFLAGS           =    -static -static-libgcc -static-libstdc++
 LINKS             =
 
 RELEASE_DEFINES   =    $(DEFINES) NDEBUG=1
@@ -19,7 +19,7 @@ RELEASE_FLAGS     =    $(FLAGS) -O2 -ffunction-sections -fdata-sections -flto
 RELEASE_CFLAGS    =    $(CFLAGS)
 RELEASE_CXXFLAGS  =    $(CXXFLAGS)
 RELEASE_ASFLAGS   =    $(ASFLAGS)
-RELEASE_LDFLAGS   =    $(LDFLAGS) -Wl,--gc-sections -flto -fuse-linker-plugin -s -static -static-libgcc -static-libstdc++
+RELEASE_LDFLAGS   =    $(LDFLAGS) -Wl,--gc-sections -flto -fuse-linker-plugin -s
 
 DEBUG_DEFINES     =    $(DEFINES) DEBUG=1
 DEBUG_FLAGS       =    $(FLAGS) -O0 -g3 -ggdb
