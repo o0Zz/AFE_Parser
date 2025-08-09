@@ -61,6 +61,17 @@ public:
 	}
 };
 
+
+void usage(const char* programName)
+{
+	printf("Usage: %s -report <report.bin> -elf <report.elf> [-addr2line <path/to/addr2line>]\n", programName);
+	printf("Options:\n");
+	printf("  -report <report.bin>   Path to the AFE report file.\n");
+	printf("  -elf <report.elf>      Path to the ELF file for symbol resolution.\n");
+	printf("  -addr2line <path>      Optional path to addr2line executable (default: %s).\n", ADDR2LINE_DEFAULT_PATH);
+	printf("  -h, --help             Show this help message.\n");
+}
+
 int main(int argc, char* argv[])
 {
 	const char *reportPath = NULL;
@@ -85,7 +96,7 @@ int main(int argc, char* argv[])
         }
 		else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0)
 		{
-			printf("Usage: %s -report <report.bin> -elf <report.elf> [-addr2line addr2line_path]\n", argv[0]);
+			usage(argv[0]);
 			return 0;
 		}
     }
@@ -93,7 +104,7 @@ int main(int argc, char* argv[])
     // Validate
     if (!reportPath || !elfPath)
     {
-        printf("Usage: %s -report <report.bin> -elf <report.elf>\n", argv[0]);
+        usage(argv[0]);
         return -1;
     }
 
