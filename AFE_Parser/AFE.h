@@ -2,6 +2,9 @@
 #include "panic.h"
 #include <cstdio>
 #include <memory>
+
+#define MB(x) ((x) * 1024 * 1024)
+
 class IStackTraceResolver
 {
 public:

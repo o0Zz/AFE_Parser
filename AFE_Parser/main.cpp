@@ -19,14 +19,14 @@ public:
 
 	static uint64_t GetRelativeAddress(uint64_t module_base, uint64_t offset)
 	{
-		if (offset >= module_base && offset - module_base < 0x1'000'000)
+		if (offset >= module_base && offset - module_base < MB(16)) // Assuming 16MB is the max size of a module
 			return offset - module_base;
 		return offset;
 	}
 
 	void ResolveAddress(uint64_t module_base, uint64_t offset, char* output, size_t outputSize) const override
 	{
-		char addr2lineOutput[256];
+		char addr2lineOutput[256] = "Failed to run addr2line";
 		char command[256];
 		snprintf(command, sizeof(command), "\"%s\" -e \"%s\" -f -p -C 0x%" PRIx64, addr2linePath, elfPath, GetRelativeAddress(module_base, offset));
 
@@ -35,24 +35,17 @@ public:
 #else
         FILE* pipe = popen(command, "r");
 #endif
-		if (pipe) {
-			
-			fgets(addr2lineOutput, sizeof(addr2lineOutput), pipe);
-
+		if (pipe) 
+		{
+			if (fgets(addr2lineOutput, sizeof(addr2lineOutput), pipe)) 
+			{
+            	addr2lineOutput[strcspn(addr2lineOutput, "\n")] = '\0'; // Remove newline
+        	}
 	#if defined(_WIN32)
 			_pclose(pipe);
 	#else
 			pclose(pipe);
 	#endif
-		}
-		else {
-			snprintf(addr2lineOutput, sizeof(addr2lineOutput), "Failed to run addr2line");
-		}
-
-		// Remove newline character if present
-		size_t len = strlen(addr2lineOutput);
-		if (len > 0 && addr2lineOutput[len - 1] == '\n') {
-			addr2lineOutput[len - 1] = '\0';
 		}
 
 		snprintf(output, outputSize, "0x%" PRIx64 " (MOD_BASE + 0x%08" PRIx64 ") - %s", offset, offset - module_base, addr2lineOutput);

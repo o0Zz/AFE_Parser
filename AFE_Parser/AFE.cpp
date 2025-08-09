@@ -4,8 +4,8 @@
 
 static const char* GetAddressWithModBase(uint64_t module_base, uint64_t offset)
 {
-	static char string_buffer[51];
-	if (offset >= module_base && offset - module_base < 0x1'000'000)
+	static char string_buffer[128];
+	if (offset >= module_base && offset - module_base < MB(16)) // Assuming 16MB is the max size of a module
 		snprintf(string_buffer, sizeof(string_buffer), "0x%" PRIx64 " (MOD_BASE + 0x%" PRIx64 ")", offset, offset - module_base);
 	else
 		snprintf(string_buffer, sizeof(string_buffer), "0x%" PRIx64 "", offset);
@@ -24,9 +24,8 @@ static void PrintRegisters(uint64_t *gprs, uint64_t pc, uint64_t module_base = -
 {
 	printf("Registers:\n");
 	for (uint32_t i = 0; i != 29; ++i)
-	{
 		printf("	X[%02" PRIu32 "]: %s\n", i, GetAddressWithModBase(module_base, gprs[i]));
-	}
+
 	printf("	FP: %s\n", GetAddressWithModBase(module_base, gprs[29]));
 	printf("	LR: %s\n", GetAddressWithModBase(module_base, gprs[30]));
 	printf("	SP: %s\n", GetAddressWithModBase(module_base, gprs[31]));
