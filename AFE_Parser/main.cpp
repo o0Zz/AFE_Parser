@@ -19,16 +19,24 @@ public:
 
 	static uint64_t GetRelativeAddress(uint64_t module_base, uint64_t offset)
 	{
+		/*
+		    On AArch64, the PC register contains the address of the current instruction,
+		    which, for return addresses, usually points to the instruction after the call.
+		    This means the reported address is actually the return site, not the call itself.
+		    To correctly identify the call location in the stack trace, subtract 4 bytes
+		    from the reported PC value.
+		*/
+
 		if (offset >= module_base && offset - module_base < MB(16)) // Assuming 16MB is the max size of a module
-			return offset - module_base;
-		return offset;
+			return (offset - module_base) - 4;
+		return offset - 4;
 	}
 
 	void ResolveAddress(uint64_t module_base, uint64_t offset, char* output, size_t outputSize) const override
 	{
 		char addr2lineOutput[256] = "Failed to run addr2line";
 		char command[256];
-		snprintf(command, sizeof(command), "\"%s\" -e \"%s\" -f -p -C 0x%" PRIx64, addr2linePath, elfPath, GetRelativeAddress(module_base, offset));
+		snprintf(command, sizeof(command), "\"%s\" -e \"%s\" -f -p -C -i 0x%" PRIx64, addr2linePath, elfPath, GetRelativeAddress(module_base, offset));
 
 #if defined(_WIN32)
         FILE* pipe = _popen(command, "r");
