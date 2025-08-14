@@ -32,43 +32,55 @@ public:
 		return offset - 4;
 	}
 
-	void ResolveAddress(uint64_t module_base, uint64_t offset, char* output, size_t outputSize) const override
+	std::string ResolveAddress(uint64_t module_base, uint64_t offset) const override
 	{
-		char addr2lineOutput[256] = "Failed to run addr2line";
-		char command[256];
-		snprintf(command, sizeof(command), "\"%s\" -e \"%s\" -f -p -C -i 0x%" PRIx64, addr2linePath, elfPath, GetRelativeAddress(module_base, offset));
+		static char output[512];
 
-#if defined(_WIN32)
-        FILE* pipe = _popen(command, "r");
-#else
-        FILE* pipe = popen(command, "r");
-#endif
-		if (pipe) 
+		if (offset >= module_base && offset - module_base < MB(16)) // Assuming 16MB is the max size of a module
 		{
-			if (fgets(addr2lineOutput, sizeof(addr2lineOutput), pipe)) 
-			{
-            	addr2lineOutput[strcspn(addr2lineOutput, "\n")] = '\0'; // Remove newline
-        	}
-	#if defined(_WIN32)
-			_pclose(pipe);
-	#else
-			pclose(pipe);
-	#endif
-		}
+			char addr2lineOutput[256] = "Failed to run addr2line";
+			char command[256];
+			snprintf(command, sizeof(command), "\"%s\" -e \"%s\" -f -p -C -i 0x%" PRIx64, addr2linePath, elfPath, GetRelativeAddress(module_base, offset));
 
-		snprintf(output, outputSize, "0x%" PRIx64 " (MOD_BASE + 0x%08" PRIx64 ") - %s", offset, offset - module_base, addr2lineOutput);
+	#if defined(_WIN32)
+			FILE* pipe = _popen(command, "r");
+	#else
+			FILE* pipe = popen(command, "r");
+	#endif
+			if (pipe) 
+			{
+				if (fgets(addr2lineOutput, sizeof(addr2lineOutput), pipe)) 
+					addr2lineOutput[strcspn(addr2lineOutput, "\n")] = '\0'; // Remove newline
+
+		#if defined(_WIN32)
+				_pclose(pipe);
+		#else
+				pclose(pipe);
+		#endif
+			}
+
+			snprintf(output, sizeof(output), "0x%" PRIx64 " (MOD_BASE + 0x%08" PRIx64 ") - %s", offset, offset - module_base, addr2lineOutput);
+		}
+		else
+			snprintf(output, sizeof(output), "0x%" PRIx64 "", offset);
+
+		return std::string(output);
 	}
 };
 
 class NoneResolver : public IStackTraceResolver
 {
 public:
-	void ResolveAddress(uint64_t module_base, uint64_t offset, char* output, size_t outputSize) const override
+	std::string ResolveAddress(uint64_t module_base, uint64_t offset) const override
 	{
-		snprintf(output, outputSize, "0x%" PRIx64 " (MOD_BASE + 0x%" PRIx64 ")", offset, offset - module_base);
+		static char output[256];
+		if (offset >= module_base && offset - module_base < MB(16)) // Assuming 16MB is the max size of a module
+			snprintf(output, sizeof(output), "0x%" PRIx64 " (MOD_BASE + 0x%08" PRIx64 ")", offset, offset - module_base);
+		else
+			snprintf(output, sizeof(output), "0x%" PRIx64 "", offset);
+		return std::string(output);
 	}
 };
-
 
 void usage(const char* programName)
 {
@@ -155,7 +167,7 @@ int main(int argc, char* argv[])
 	{
 		atmosphere_fatal_error_ctx_0 fatal_report;
 		file.read((char*)&fatal_report, sizeof(fatal_report));
-		PrintAFE0Report(&fatal_report);
+		PrintAFE0Report(&fatal_report, *resolver);
 	}
 	else if ((fatal_magic & 0xF0FFFFFF) == ATMOSPHERE_REBOOT_TO_FATAL_MAGIC_0)
 	{

@@ -2,16 +2,6 @@
 #include "inttypes.h"
 #include <cstdlib>
 
-static const char* GetAddressWithModBase(uint64_t module_base, uint64_t offset)
-{
-	static char string_buffer[128];
-	if (offset >= module_base && offset - module_base < MB(16)) // Assuming 16MB is the max size of a module
-		snprintf(string_buffer, sizeof(string_buffer), "0x%" PRIx64 " (MOD_BASE + 0x%" PRIx64 ")", offset, offset - module_base);
-	else
-		snprintf(string_buffer, sizeof(string_buffer), "0x%" PRIx64 "", offset);
-	return string_buffer;
-}
-
 static void PrintReportDesc(uint32_t magic, uint32_t error_desc, uint64_t titleid, uint64_t module_base = -1)
 {
 	printf("Magic            : %.4s (0x%" PRIX32 ")\n", (char*)&magic, magic);
@@ -20,16 +10,16 @@ static void PrintReportDesc(uint32_t magic, uint32_t error_desc, uint64_t titlei
 	printf("Module base addr : %" PRIX64 "\n", module_base);
 }
 
-static void PrintRegisters(uint64_t *gprs, uint64_t pc, uint64_t module_base = -1)
+static void PrintRegisters(uint64_t *gprs, uint64_t pc, uint64_t module_base, const IStackTraceResolver& resolver)
 {
 	printf("Registers:\n");
 	for (uint32_t i = 0; i != 29; ++i)
-		printf("	X[%02" PRIu32 "]: %s\n", i, GetAddressWithModBase(module_base, gprs[i]));
+		printf("	X[%02" PRIu32 "]: %s\n", i, resolver.ResolveAddress(module_base, gprs[i]).c_str());
 
-	printf("	FP: %s\n", GetAddressWithModBase(module_base, gprs[29]));
-	printf("	LR: %s\n", GetAddressWithModBase(module_base, gprs[30]));
-	printf("	SP: %s\n", GetAddressWithModBase(module_base, gprs[31]));
-	printf("	PC: %s\n", GetAddressWithModBase(module_base, pc));
+	printf("	FP: %s\n", resolver.ResolveAddress(module_base, gprs[29]).c_str());
+	printf("	LR: %s\n", resolver.ResolveAddress(module_base, gprs[30]).c_str());
+	printf("	SP: %s\n", resolver.ResolveAddress(module_base, gprs[31]).c_str());
+	printf("	PC: %s\n", resolver.ResolveAddress(module_base, pc).c_str());
 
 }
 
@@ -48,9 +38,7 @@ static void PrintStackTrace(uint64_t* stack_trace, uint64_t stack_trace_size, ui
 	printf("Stack trace:\n");
 	for (uint64_t i = 0; i != stack_trace_size; ++i)
 	{
-		char result[256];
-		resolver.ResolveAddress(module_base, stack_trace[i], result, sizeof(result));
-		printf("	%02" PRIu64 " - %s\n", i, result);
+		printf("	%02" PRIu64 " - %s\n", i, resolver.ResolveAddress(module_base, stack_trace[i]).c_str());
 	}
 }
 
@@ -84,7 +72,7 @@ static void PrintTlsDump(uint8_t* tls_dump, uint64_t tls_dump_size = AMS_FATAL_E
 	}
 }
 
-void PrintAFE0Report(atmosphere_fatal_error_ctx_0* fatal_report)
+void PrintAFE0Report(atmosphere_fatal_error_ctx_0* fatal_report, const IStackTraceResolver& resolver)
 {
 	printf("Fatal report (AFE0):\n");
 	printf("\n");
@@ -92,9 +80,9 @@ void PrintAFE0Report(atmosphere_fatal_error_ctx_0* fatal_report)
 	PrintReportDesc(fatal_report->magic, fatal_report->error_desc, fatal_report->title_id);
 	printf("\n");
 
-	PrintRegisters(fatal_report->gprs, fatal_report->pc);
+	PrintRegisters(fatal_report->gprs, fatal_report->pc, -1, resolver);
 	printf("\n");
-
+	
 	PrintMisc(fatal_report->pstate, fatal_report->afsr0, fatal_report->afsr1, fatal_report->esr, fatal_report->far, fatal_report->report_identifier);
 	printf("\n");
 }
@@ -107,7 +95,7 @@ void PrintAFE1Report(atmosphere_fatal_error_ctx_1* fatal_report, const IStackTra
 	PrintReportDesc(fatal_report->magic, fatal_report->error_desc, fatal_report->title_id, fatal_report->module_base);
 	printf("\n");
 
-	PrintRegisters(fatal_report->gprs, fatal_report->pc, fatal_report->module_base);
+	PrintRegisters(fatal_report->gprs, fatal_report->pc, fatal_report->module_base, resolver);
 	printf("\n");
 
 	PrintMisc(fatal_report->pstate, fatal_report->afsr0, fatal_report->afsr1, fatal_report->esr, fatal_report->far, fatal_report->report_identifier);
@@ -128,7 +116,7 @@ void PrintAFE2Report(atmosphere_fatal_error_ctx* fatal_report, const IStackTrace
 	PrintReportDesc(fatal_report->magic, fatal_report->error_desc, fatal_report->title_id, fatal_report->module_base);
 	printf("\n");
 
-	PrintRegisters(fatal_report->gprs, fatal_report->pc, fatal_report->module_base);
+	PrintRegisters(fatal_report->gprs, fatal_report->pc, fatal_report->module_base, resolver);
 	printf("\n");
 
 	PrintMisc(fatal_report->pstate, fatal_report->afsr0, fatal_report->afsr1, fatal_report->esr, fatal_report->far, fatal_report->report_identifier);
